@@ -1,15 +1,18 @@
+---------------------------
 --- Author: Rostal
---- Last edit date: 2022/11/10
+---------------------------
 
 util.require_natives("natives-1663599433")
 util.keep_running()
 
-local Support_GTAO = 1.63
+-- 脚本版本
+local Script_Version <const> = "2022/11/29"
+
+-- 支持的GTA线上版本
+local Support_GTAO <const> = 1.63
+
 
 -- Globals 原生数据
---  ["menu name"] = {
---     { name, global_adress, value_type, default_value },
--- }
 local Globals_Raw_Data = {
     {
         menu = "Multiplier",
@@ -129,6 +132,19 @@ local Globals_Raw_Data = {
     },
 
     {
+        menu = "改装铺客户改车",
+        items = {
+            { "Vehicle Cooldown", 262145 + 31114, "int", 2880 },
+            { "% Chance", 262145 + 31115, "int", 50 },
+            { "2 Lifts Cooldown Multiplier", 262145 + 31116, "float", 0.5 },
+            { "Extra Time", 262145 + 31120, "int", 600 },
+            { "Low Tier Delivery Payout", 262145 + 31124, "int", 20000 },
+            { "Mid Tier Delivery Payout", 262145 + 31125, "int", 25000 },
+            { "High Tier Delivery Payout", 262145 + 31126, "int", 30000 },
+        }
+    },
+
+    {
         menu = "石斧",
         items = {
             { "Weapon Defense Multiplier", 262145 + 25325, "float", 0.5 },
@@ -137,6 +153,52 @@ local Globals_Raw_Data = {
             { "Duration", 262145 + 25330, "int", 12000 },
             { "Added Duration Per Kill", 262145 + 25331, "int", 6000 },
             { "Cooldown", 262145 + 25332, "int", 60000 },
+        }
+    },
+
+    {
+        menu = "佩里科岛抢劫",
+        items = {
+            { menu = "主要目标价值", items = {
+                { "酒", 262145 + 29970, "int", 900000 },
+                { "项链", 262145 + 29971, "int", 1000000 },
+                { "债券", 262145 + 29972, "int", 1100000 },
+                { "粉钻", 262145 + 29973, "int", 1300000 },
+                { "文件", 262145 + 29974, "int", 1100000 },
+                { "猎豹", 262145 + 29975, "int", 1900000 },
+            } },
+            { menu = "次要目标价值", items = {
+                { "Cash Min", 262145 + 29742, "int", 87500 },
+                { "Cash Max", 262145 + 29743, "int", 92500 },
+                { "Weed Min", 262145 + 29744, "int", 14500 },
+                { "Weed Max", 262145 + 29745, "int", 15000 },
+                { "Cocaine Min", 262145 + 29746, "int", 220000 },
+                { "Cocaine Max", 262145 + 29747, "int", 225000 },
+                { "Gold Min", 262145 + 29748, "int", 328333 },
+                { "Gold Max", 262145 + 29749, "int", 333333 },
+                { "Artwork Min", 262145 + 29750, "int", 175000 },
+                { "Artwork Max", 262145 + 29751, "int", 200000 },
+            } },
+            { menu = "次要目标每单位占用背包空间", items = {
+                { "Cash", 262145 + 29721, "float", 10.0 },
+                { "Cocaine", 262145 + 29722, "float", 20.0 },
+                { "Weed", 262145 + 29723, "float", 15.0 },
+                { "Gold", 262145 + 29724, "float", 50.0 },
+                { "Artwork", 262145 + 29725, "float", 900.0 },
+            } },
+            { menu = "精英挑战", items = {
+                { "Base Bonus", 262145 + 29981, "int", 50000 },
+                { "Hardmode Multiplier", 262145 + 29982, "float", 2.0 },
+                { "Required % of bag filled", 262145 + 29985, "int", 0 },
+            } },
+            { menu = "其它", items = {
+                { "Office Safe Cash Min", 262145 + 29752, "int", 50000 },
+                { "Office Safe Cash Max", 262145 + 29753, "int", 99000 },
+                { "Normal Difficulty Multiplier", 262145 + 29976, "float", 1.0 },
+                { "Hard Difficulty Multiplier", 262145 + 29977, "float", 1.0 }, -- stand slider_float can't set to 1.1
+                { "Fencing Fee", 262145 + 29979, "float", -0.1 },
+                { "Pavel Cut", 262145 + 29980, "float", -0.02 },
+            } },
         }
     },
 
@@ -195,6 +257,36 @@ local function GET_FLOAT_GLOBAL(Global)
     return memory.read_float(memory.script_global(Global))
 end
 
+local function SET_INT_LOCAL(Script, Local, Value)
+    if memory.script_local(Script, Local) ~= 0 then
+        memory.write_int(memory.script_local(Script, Local), Value)
+    end
+end
+
+local function SET_FLOAT_LOCAL(Script, Local, Value)
+    if memory.script_local(Script, Local) ~= 0 then
+        memory.write_float(memory.script_local(Script, Local), Value)
+    end
+end
+
+local function GET_INT_LOCAL(Script, Local)
+    if memory.script_local(Script, Local) ~= 0 then
+        local Value = memory.read_int(memory.script_local(Script, Local))
+        if Value ~= nil then
+            return Value
+        end
+    end
+end
+
+local function GET_FLOAT_LOCAL(Script, Local)
+    if memory.script_local(Script, Local) ~= 0 then
+        local Value = memory.read_float(memory.script_local(Script, Local))
+        if Value ~= nil then
+            return Value
+        end
+    end
+end
+
 local function draw_text(text)
     local scale = 0.5
     local background = {
@@ -215,8 +307,62 @@ local function draw_text(text)
     directx.draw_text(0.5, 0.01, text, ALIGN_TOP_LEFT, scale, color)
 end
 
+local function generate_global_comands(command_parent, data)
+    local global = data[2]
+    local value_type = data[3]
+    local default_value = tonumber(data[4])
 
-local function generate_menu(tbl, menu_parent, menu_name)
+    menu.readonly(command_parent, "Global", global)
+
+    local global_value = default_value
+    if value_type == "int" then
+        menu.slider(command_parent, "值", { global .. "value" }, "", -16777216, 16777216, default_value, 1,
+            function(value)
+                global_value = value
+            end)
+    elseif value_type == "float" then
+        menu.slider_float(command_parent, "值", { global .. "value" }, "", -1000000, 1000000,
+            default_value * 100,
+            10, function(value)
+            global_value = value * 0.01
+        end)
+    end
+
+    menu.action(command_parent, "读取", {}, "", function()
+        if value_type == "int" then
+            util.toast(GET_INT_GLOBAL(global))
+        elseif value_type == "float" then
+            util.toast(GET_FLOAT_GLOBAL(global))
+        end
+    end)
+
+    menu.action(command_parent, "写入", {}, "", function()
+        if value_type == "int" then
+            SET_INT_GLOBAL(global, global_value)
+        elseif value_type == "float" then
+            SET_FLOAT_GLOBAL(global, global_value)
+        end
+    end)
+
+    local toggle_loop = menu.toggle_loop(command_parent, "锁定", {}, "", function()
+        if value_type == "int" then
+            SET_INT_GLOBAL(global, global_value)
+        elseif value_type == "float" then
+            SET_FLOAT_GLOBAL(global, global_value)
+        end
+    end)
+    table.insert(lock_global_toggle_list, toggle_loop)
+
+    menu.action(command_parent, "恢复默认值", {}, "", function()
+        if value_type == "int" then
+            SET_INT_GLOBAL(global, default_value)
+        elseif value_type == "float" then
+            SET_FLOAT_GLOBAL(global, default_value)
+        end
+    end)
+end
+
+local function generate_global_menu(tbl, menu_parent, menu_name)
     if menu_name ~= nil then
         menu_parent = menu.list(menu_parent, menu_name, {}, "")
     end
@@ -224,7 +370,7 @@ local function generate_menu(tbl, menu_parent, menu_name)
     local is_menu = true
     for key, value in pairs(tbl) do
         if value.menu ~= nil then
-            generate_menu(value.items, menu_parent, value.menu)
+            generate_global_menu(value.items, menu_parent, value.menu)
         else
             is_menu = false
         end
@@ -233,64 +379,11 @@ local function generate_menu(tbl, menu_parent, menu_name)
     if not is_menu then
         for k, v in pairs(tbl) do
             local command_parent = menu.list(menu_parent, v[1], {}, "")
-
-            local global = v[2]
-            local value_type = v[3]
-            local default_value = v[4]
-            menu.readonly(command_parent, "Global: ", global)
-
-            local global_value = default_value
-            if value_type == "int" then
-                menu.slider(command_parent, "Value", { global .. "value" }, "", -16777216, 16777216, default_value, 1,
-                    function(value)
-                        global_value = value
-                    end)
-            elseif value_type == "float" then
-                menu.slider_float(command_parent, "值", { global .. "value" }, "", -1000000, 1000000,
-                    default_value * 100,
-                    100, function(value)
-                    global_value = value * 0.01
-                end)
-            end
-
-            menu.action(command_parent, "读取", {}, "", function()
-                if value_type == "int" then
-                    util.toast(GET_INT_GLOBAL(global))
-                elseif value_type == "float" then
-                    util.toast(GET_FLOAT_GLOBAL(global))
-                end
-            end)
-
-            menu.action(command_parent, "写入", {}, "", function()
-                if value_type == "int" then
-                    SET_INT_GLOBAL(global, global_value)
-                elseif value_type == "float" then
-                    SET_FLOAT_GLOBAL(global, global_value)
-                end
-            end)
-
-            local toggle_loop = menu.toggle_loop(command_parent, "锁定", {}, "", function()
-                if value_type == "int" then
-                    SET_INT_GLOBAL(global, global_value)
-                elseif value_type == "float" then
-                    SET_FLOAT_GLOBAL(global, global_value)
-                end
-            end)
-            table.insert(lock_global_toggle_list, toggle_loop)
-
-            menu.action(command_parent, "恢复默认值", {}, "", function()
-                if value_type == "int" then
-                    SET_INT_GLOBAL(global, default_value)
-                elseif value_type == "float" then
-                    SET_FLOAT_GLOBAL(global, default_value)
-                end
-            end)
-
+            generate_global_comands(command_parent, v)
         end
     end
 
 end
-
 
 ----- SCRIPT START -----
 if SCRIPT_MANUAL_START then
@@ -305,10 +398,10 @@ local menu_root = menu.my_root()
 
 menu.divider(menu_root, "RS Globals")
 
-generate_menu(Globals_Raw_Data, menu_root)
+generate_global_menu(Globals_Raw_Data, menu_root)
 
 local tool_options = menu.list(menu_root, "工具", {}, "")
-menu.toggle_loop(tool_options, "显示锁定的Globals", {},"",function()
+menu.toggle_loop(tool_options, "显示锁定的Globals", {}, "", function()
     local text = ""
     for k, v in pairs(lock_global_toggle_list) do
         if menu.is_ref_valid(v) then
@@ -320,10 +413,20 @@ menu.toggle_loop(tool_options, "显示锁定的Globals", {},"",function()
     end
     draw_text(text)
 end)
-menu.action(tool_options, "取消锁定所有Globals", {},"",function()
+menu.action(tool_options, "取消锁定所有Globals", {}, "", function()
     for k, v in pairs(lock_global_toggle_list) do
         if menu.is_ref_valid(v) then
             menu.set_value(v, false)
         end
     end
 end)
+
+
+
+-----------------
+menu.divider(menu_root,"")
+local about_options = menu.list(menu_root, "关于", {}, "")
+menu.readonly(about_options, "Author", "Rostal")
+menu.hyperlink(about_options, "Github", "https://github.com/TCRoid/Stand-_-Lua-_-Scripts")
+menu.readonly(about_options, "Version", Script_Version)
+menu.readonly(about_options, "Support GTAO Version", Support_GTAO)
